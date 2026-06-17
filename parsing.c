@@ -1,4 +1,5 @@
 #include "mpc.h"
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -23,19 +24,45 @@ void add_history(char *unused) {}
 #include <histedit.h>
 #endif
 
+int eval_ops(int x, char* op, int y) {
+  if ()
+}
+
+int eval(mpc_ast_t* t) {
+
+  if (strstr(t->tag, "number")) {
+    return atoi(t->contents);
+  }
+
+  char* op = t->children[1]->contents;
+
+  long x = eval(t->children[2]);
+
+  int i = 0;
+  while (strstr(t->children[i], "expr")) {
+    x = eval_op(x, op, eval(t->children[i]));
+    i++;
+  }
+
+  return x;
+
+}
+
 int main(int argc, char **argv) {
-  mpc_parser_t *Number = mpc_new("number");
+  mpc_parser_t *Integer = mpc_new("integer");
+  mpc_parser_t *Float = mpc_new("float");
   mpc_parser_t *Operator = mpc_new("operator");
   mpc_parser_t *Expr = mpc_new("expr");
   mpc_parser_t *Slop = mpc_new("slop");
 
-  mpca_lang(MPCA_LANG_DEFAULT, "                                              \
-        number   : /-?[0-9]+/ ;                            \
+  mpca_lang(MPCA_LANG_DEFAULT, "                           \
+        integer  : /-?[0-9]+/ ;                            \
+        float    : /[+-]?(([0-9]+[.]+[0-9]*)|([.][0-9]+))/ ;                 \
         operator : '+' | '-' | '*' | '/' ;                 \
-        expr     : <number> | '(' <operator> <expr>+ ')' ; \
+        expr     : <float> | <integer> | '(' <operator> <expr>+ ')' ; \
         slop     : /^/ <operator> <expr>+ /$/ ;            \
 ",
-            Number, Operator, Expr, Slop);
+Integer, Float, Operator, Expr, Slop);
 
   puts("Slop version 0.0.0.1");
   puts("Be ready for the future.\n");
@@ -49,8 +76,18 @@ int main(int argc, char **argv) {
     mpc_result_t r;
 
     if (mpc_parse("<stdin>", input, Slop, &r)) {
-      mpc_ast_print(r.output);
-      mpc_ast_delete(r.output);
+      mpc_ast_t* a = r.output;
+
+      printf("Pondering input...\n");
+      clock_t begin = clock();
+
+      int result = eval(a);
+
+      clock_t end = clock();
+      double time_spent = (double)(end - begin) / CLOCKS_PER_SECOND;
+
+      printf("The logic returneth: %l\n", result);
+      printf("In %.2lf seconds.");
     } else {
       mpc_err_print(r.error);
       mpc_err_delete(r.error);
@@ -59,7 +96,7 @@ int main(int argc, char **argv) {
     free(input);
   }
 
-  mpc_cleanup(4, Number, Operator, Expr, Slop);
+  mpc_cleanup(4, Integer, Float, Operator, Expr, Slop);
 
   return 0;
 }
