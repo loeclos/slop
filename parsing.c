@@ -1,6 +1,7 @@
 #include "mpc.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifdef _WIN32
 
@@ -39,7 +40,6 @@ typedef struct lval {
   struct lval **cell;
 } lval;
 
-/* Create a new number type lval */
 lval *lval_int(long x) {
   lval *v = malloc(sizeof(lval));
   v->type = LVAL_INT;
@@ -64,7 +64,7 @@ lval *lval_sym(char *s) {
   return v;
 }
 
-lval *lval_sexpr(void) {
+lval *lval_sform(void) {
   lval *v = malloc(sizeof(lval));
   v->type = LVAL_SFORM;
   v->count = 0;
@@ -80,6 +80,7 @@ void lval_del(lval *v) {
   case LVAL_MISTAKE:
     free(v->err);
     break;
+
   case LVAL_SYM:
     free(v->sym);
     break;
@@ -112,7 +113,7 @@ lval *lval_read_int(mpc_ast_t *t) {
 }
 
 lval *lval_read(mpc_ast_t *t) {
-  if (strstr(t->tag, "number")) {
+  if (strstr(t->tag, "int")) {
     return lval_read_int(t);
   }
   if (strstr(t->tag, "symbol")) {
@@ -121,10 +122,10 @@ lval *lval_read(mpc_ast_t *t) {
 
   lval *x = NULL;
   if (strcmp(t->tag, ">") == 0) {
-    x = lval_sexpr();
+    x = lval_sform();
   }
-  if (strstr(t->tag, "sexpr")) {
-    x = lval_sexpr();
+  if (strstr(t->tag, "sform")) {
+    x = lval_sform();
   }
 
   for (int i = 0; i < t->children_num; i++) {
@@ -143,7 +144,9 @@ lval *lval_read(mpc_ast_t *t) {
   return x;
 }
 
-void lval_expr_print(lval *v, char open, char close) {
+void lval_output(lval *v);
+
+void lval_expr_output(lval *v, char open, char close) {
 
   putchar(open);
 
@@ -173,58 +176,103 @@ void lval_output(lval *v) {
     printf("%s", v->sym);
     break;
   case LVAL_SFORM:
-    lval_expr_print(v, '(', ')');
+    lval_expr_output(v, '(', ')');
     break;
   }
 }
 
-lval eval_op(lval x, char *op, lval y) {
+void lval_outputln(lval *v) {
+  lval_output(v);
+  putchar('\n');
+}
+
+lval *eval_op(lval *x, char *op, lval *y) {
 
   /* If either value is an error return it */
-  if (x.type == LVAL_MISTAKE) {
+  if (x->type == LVAL_MISTAKE) {
     return x;
   }
-  if (y.type == LVAL_MISTAKE) {
+  if (y->type == LVAL_MISTAKE) {
     return y;
   }
 
   /* Otherwise do maths on the number values */
   if (strcmp(op, "+") == 0) {
-    return lval_int(x.num + y.num);
+    return lval_int(x->type + y->type);
   }
   if (strcmp(op, "-") == 0) {
-    return lval_int(x.num - y.num);
+    return lval_int(x->type - y->type);
   }
   if (strcmp(op, "*") == 0) {
-    return lval_int(x.num * y.num);
+    return lval_int(x->type * y->type);
   }
   if (strcmp(op, "/") == 0) {
     /* If second operand is zero return error */
-    return y.num == 0 ? lval_mistake(LMIS_DIV_ZERO) : lval_int(x.num / y.num);
+    return y->num == 0 ? lval_mistake("cannot divide by zero")
+                       : lval_int(x->num / y->type);
   }
 
-  return lval_mistake(LMIS_BAD_OP);
+  return lval_mistake("bad symbol");
 }
 
-lval eval(mpc_ast_t *t) {
+lval *lval_pop(lval *v, int i) {
+  lval *x = v->cell[i];
 
-  if (strstr(t->tag, "int")) {
-    /* Check if there is some error in conversion */
-    errno = 0;
-    long x = strtol(t->contents, NULL, 10);
-    return errno != ERANGE ? lval_int(x) : lval_mistake(LMIS_BAD_NUM);
-  }
+  memmove(&v->cell[i], &v->cell[i + 1], sizeof(lval *) * (v->count - i - 1));
 
-  char *op = t->children[1]->contents;
-  lval x = eval(t->children[2]);
+  v->count--;
 
-  int i = 3;
-  while (strstr(t->children[i]->tag, "form")) {
-    x = eval_op(x, op, eval(t->children[i]));
-    i++;
-  }
+  v->cell = realloc(v->cell, sizeof(lval *) * v->count);
 
   return x;
+}
+
+lval *lval_take(lval *v, int i) {
+  lval *x = lval_pop(v, i);
+  lval_del(v);
+  return x;
+}
+
+lval *lval_analyze(lval *v);
+
+lval *lval_analyze_sform(lval *v) {
+
+  for (int i = 0; i < v->count; i++) {
+    v->cell[i] = lval_analyze(v->cell[0]);
+  }
+
+  for (int i = 0; i < v->count; i++) {
+    if (v->cell[i]->type == LVAL_MISTAKE) {
+      return lval_take(v, i);
+    }
+  }
+
+  if (v->count == 1) {
+    return v;
+  }
+
+  if (v->count == 1) {
+    return lval_take(v, 0);
+  }
+
+  lval *f = lval_pop(v, 0);
+  if (f->type != LVAL_SYM) {
+    lval_del(f);
+    lval_del(v);
+    return lval_mistake("S-Formulation does not start with symbol!");
+  }
+
+  lval *result = builtin_op(v, f->sym);
+  lval_del(f);
+  return result;
+}
+
+lval *lval_analyze(lval *v) {
+  if (v->type == LVAL_SFORM) {
+    return lval_analyze_sform(v);
+  }
+
+  return v;
 }
 
 int main(int argc, char **argv) {
@@ -255,8 +303,11 @@ int main(int argc, char **argv) {
 
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Slop, &r)) {
-      lval output = eval(r.output);
-      lval_outputln(output);
+      // lval output = eval(r.output);
+      // lval_outputln(output);
+      lval *x = lval_read(r.output);
+      lval_outputln(x);
+      lval_del(x);
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
