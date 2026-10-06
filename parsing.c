@@ -233,6 +233,57 @@ lval *lval_take(lval *v, int i) {
   return x;
 }
 
+lval* gluedin_op(lval* a, char* op) {
+
+  for (int i = 0; i < a->count; i++) {
+
+      printf("here");
+    printf("%d", a->count);
+    if (a->cell[i]->type != LVAL_INT) {
+
+      printf("\n here 2");
+      lval_del(a);
+      return lval_mistake("Cannot operate on a non-number!");
+
+    }
+
+  }
+
+  lval* x = lval_pop(a, 0);
+
+  if ((strcmp(op, "-") == 0) && a->count == 0) {
+    x->num = -x->num;
+  }
+
+  while (a->count > 0) {
+    lval* y = lval_pop(a, 0);
+
+    if (strcmp(op, "+")) {
+      x->num += y->num;
+
+    }
+    if (strcmp(op, "-")) {
+      x->num -= y->num;
+
+    }
+    if (strcmp(op, "*")) {
+      x->num *= y->num;
+
+    }
+    if (strcmp(op, "/")) {
+      if (y->num == 0) {
+        lval_del(x); lval_del(y);
+        x = lval_mistake("Division By Zero!"); break;
+      }
+      x->num /= y->num;
+    }
+
+    lval_del(y);
+  }
+
+  lval_del(a); return x;
+}
+
 lval *lval_analyze(lval *v);
 
 lval *lval_analyze_sform(lval *v) {
@@ -262,7 +313,7 @@ lval *lval_analyze_sform(lval *v) {
     return lval_mistake("S-Formulation does not start with symbol!");
   }
 
-  lval *result = builtin_op(v, f->sym);
+  lval *result = gluedin_op(v, f->sym);
   lval_del(f);
   return result;
 }
@@ -302,19 +353,25 @@ int main(int argc, char **argv) {
     add_history(input);
 
     mpc_result_t r;
+
     if (mpc_parse("<stdin>", input, Slop, &r)) {
-      // lval output = eval(r.output);
-      // lval_outputln(output);
-      lval *x = lval_read(r.output);
+
+      lval *x = lval_analyze(lval_read(r.output));
+
       lval_outputln(x);
       lval_del(x);
+
       mpc_ast_delete(r.output);
+
     } else {
+
       mpc_err_print(r.error);
       mpc_err_delete(r.error);
+
     }
 
     free(input);
+
   }
 
   mpc_cleanup(5, Integer, Symbol, SFormulation, Formulation, Slop);
