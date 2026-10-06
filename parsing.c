@@ -239,20 +239,7 @@ lval* gluedin_op(lval* a, char* op) {
 
     if (a->cell[i]->type != LVAL_INT) {
 
-      // ERROR Seems to either
-      //
-      // a) free up free memory, or
-      // b) free up memory and something else later on frees it it too
-      //
-      // Commenting the line out helps, but it shouldn't. What is freeing
-      // up the memory?
-      //
-      // If we comment out the whole encapsulating for loop, the program
-      // still crashes with the same error, possible because of the free
-      // right next to the return statement.
-
       lval_del(a);
-
 
       return lval_mistake("Cannot operate on a non-number!");
 
