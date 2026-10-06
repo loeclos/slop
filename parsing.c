@@ -50,7 +50,7 @@ lval *lval_int(long x) {
 /* Create a new error type lval */
 lval *lval_mistake(char *m) {
   lval *v = malloc(sizeof(lval));
-  v->type = LVAL_INT;
+  v->type = LVAL_MISTAKE;
   v->err = malloc(strlen(m) + 1);
   strcpy(v->err, m);
   return v;
@@ -237,12 +237,23 @@ lval* gluedin_op(lval* a, char* op) {
 
   for (int i = 0; i < a->count; i++) {
 
-      printf("here");
-    printf("%d", a->count);
     if (a->cell[i]->type != LVAL_INT) {
 
-      printf("\n here 2");
+      // ERROR Seems to either
+      //
+      // a) free up free memory, or
+      // b) free up memory and something else later on frees it it too
+      //
+      // Commenting the line out helps, but it shouldn't. What is freeing
+      // up the memory?
+      //
+      // If we comment out the whole encapsulating for loop, the program
+      // still crashes with the same error, possible because of the free
+      // right next to the return statement.
+
       lval_del(a);
+
+
       return lval_mistake("Cannot operate on a non-number!");
 
     }
@@ -258,19 +269,22 @@ lval* gluedin_op(lval* a, char* op) {
   while (a->count > 0) {
     lval* y = lval_pop(a, 0);
 
-    if (strcmp(op, "+")) {
+    if (strcmp(op, "+") == 0) {
       x->num += y->num;
 
     }
-    if (strcmp(op, "-")) {
+
+    if (strcmp(op, "-") == 0) {
       x->num -= y->num;
 
     }
-    if (strcmp(op, "*")) {
+
+    if (strcmp(op, "*") == 0) {
       x->num *= y->num;
 
     }
-    if (strcmp(op, "/")) {
+
+    if (strcmp(op, "/") == 0) {
       if (y->num == 0) {
         lval_del(x); lval_del(y);
         x = lval_mistake("Division By Zero!"); break;
@@ -289,7 +303,7 @@ lval *lval_analyze(lval *v);
 lval *lval_analyze_sform(lval *v) {
 
   for (int i = 0; i < v->count; i++) {
-    v->cell[i] = lval_analyze(v->cell[0]);
+    v->cell[i] = lval_analyze(v->cell[i]);
   }
 
   for (int i = 0; i < v->count; i++) {
@@ -316,6 +330,7 @@ lval *lval_analyze_sform(lval *v) {
   lval *result = gluedin_op(v, f->sym);
   lval_del(f);
   return result;
+
 }
 
 lval *lval_analyze(lval *v) {
